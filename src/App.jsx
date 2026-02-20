@@ -978,6 +978,21 @@ function useSSE(token) {
 
   const dismiss = () => setIncomingEvent(null);
 
+  // Listen for push notification clicks from service worker
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+
+    const handleMessage = (event) => {
+      if (event.data?.type === 'PUSH_NOTIFICATION_CLICK' && event.data?.data) {
+        console.log('Push notification clicked, showing popup');
+        setIncomingEvent(event.data.data);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+  }, []);
+
   return { incomingEvent, dismiss };
 }
 
