@@ -591,6 +591,202 @@ function SettingsScreen({ agent, onLogout }) {
   );
 }
 
+// ─── Ticket Detail ──────────────────────────────────────
+function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
+  const [ticket, setTicket] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const messagesEnd = React.useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.getTicket(ticketId);
+      setTicket(res.data.ticket || res.data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, [ticketId]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [ticket?.messages]);
+
+  const sendReply = async () => {
+    if (!reply.trim() || sending) return;
+    setSending(true);
+    try {
+      await api.addTicketMessage(ticketId, reply.trim());
+      setReply('');
+      await load();
+    } catch (e) { alert('Failed to send'); }
+    finally { setSending(false); }
+  };
+
+  const updateStatus = async (status) => {
+    setUpdating(true);
+    try {
+      await api.updateTicket(ticketId, { status });
+      await load();
+    } catch (e) { alert('Failed to update'); }
+    finally { setUpdating(false); }
+  };
+
+  const channelIcon = { amazon: '📦', shopify: '🛒', phone: '📞', text: '💬', email: '✉️' };
+  const statusColor = { open: 'var(--warning)', in_progress: 'var(--info)', resolved: 'var(--success)', closed: 'var(--text-muted)' };
+  const statusOptions = ['open', 'in_progress', 'resolved', 'closed'];
+
+  const fmt = (d) => {
+    const date = new Date(d);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    if (isToday) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+
+  if (loading) return (
+    <div className="page flex-col items-center" style={{ justifyContent: 'center' }}>
+      <div className="spinner" />
+    </div>
+  );
+
+  if (!ticket) return (
+    <div className="page">
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '56px 20px 16px' }} className="flex items-center gap-12">
+        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--surface-hover)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="back" size={20} color="var(--text)" />
+        </button>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Ticket Not Found</div>
+      </div>
+      <div className="text-center mt-24" style={{ padding: 20 }}>
+        <Icon name="alert" size={48} color="var(--text-muted)" />
+        <div style={{ fontSize: 16, color: 'var(--text-sec)', marginTop: 12 }}>Could not load this ticket.</div>
+        <button className="btn btn-primary" style={{ marginTop: 20, maxWidth: 200, margin: '20px auto 0' }} onClick={onBack}>Go Back</button>
+      </div>
+    </div>
+  );
+
+  const messages = ticket.messages || [];
+
+  return (
+    <div className="page" style={{ paddingBottom: 80, display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '56px 20px 16px', flexShrink: 0 }}>
+        <div className="flex items-center gap-12">
+          <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--surface-hover)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="back" size={20} color="var(--text)" />
+          </button>
+          <div className="flex-1" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ticket.subject}</div>
+            <div className="flex items-center gap-8" style={{ marginTop: 2 }}>
+              <span style={{ fontSize: 14 }}>{channelIcon[ticket.channel]}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-sec)', textTransform: 'capitalize' }}>{ticket.channel}</span>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>·</span>
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: statusColor[ticket.status] }} />
+              <span style={{ fontSize: 13, color: statusColor[ticket.status], textTransform: 'capitalize' }}>{ticket.status?.replace('_', ' ')}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Customer info bar */}
+        <div className="flex items-center gap-12" style={{ marginTop: 12, padding: '12px 0', borderTop: '1px solid var(--border)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 600, color: 'var(--primary)', flexShrink: 0 }}>
+            {(ticket.customerName || ticket.customerPhone || '?')[0].toUpperCase()}
+          </div>
+          <div className="flex-1" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{ticket.customerName || 'Unknown Customer'}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {[ticket.customerEmail, ticket.customerPhone].filter(Boolean).join(' · ') || 'No contact info'}
+            </div>
+          </div>
+        </div>
+
+        {/* Status controls */}
+        <div className="flex gap-8" style={{ marginTop: 4 }}>
+          {statusOptions.map(s => (
+            <button key={s} onClick={() => updateStatus(s)} disabled={updating || ticket.status === s}
+              style={{
+                flex: 1, padding: '8px 4px', borderRadius: 8, border: `1px solid ${ticket.status === s ? statusColor[s] : 'var(--border)'}`,
+                background: ticket.status === s ? `${statusColor[s]}15` : 'transparent',
+                color: ticket.status === s ? statusColor[s] : 'var(--text-muted)',
+                fontSize: 11, fontWeight: 600, cursor: ticket.status === s ? 'default' : 'pointer', textTransform: 'capitalize',
+                opacity: updating ? 0.5 : 1,
+              }}>
+              {s.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        {messages.length === 0 ? (
+          <div className="text-center" style={{ padding: '40px 0' }}>
+            <Icon name="mail" size={40} color="var(--text-muted)" />
+            <div style={{ fontSize: 15, color: 'var(--text-sec)', marginTop: 12 }}>No messages yet</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Send a reply to start the conversation</div>
+          </div>
+        ) : messages.map((m, i) => {
+          const isAgent = m.senderType === 'agent';
+          const isSystem = m.senderType === 'system';
+          return (
+            <div key={m.id || i} style={{ marginBottom: 12 }}>
+              {isSystem ? (
+                <div className="text-center" style={{ padding: '8px 0' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--surface)', padding: '4px 12px', borderRadius: 12 }}>
+                    {m.body}
+                  </span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: isAgent ? 'flex-end' : 'flex-start' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, paddingLeft: isAgent ? 0 : 4, paddingRight: isAgent ? 4 : 0 }}>
+                    {isAgent ? (m.senderAgent?.name || 'Agent') : (ticket.customerName || ticket.customerPhone || 'Customer')} · {fmt(m.createdAt)}
+                  </div>
+                  <div style={{
+                    maxWidth: '80%', padding: '10px 14px', borderRadius: 16,
+                    borderTopLeftRadius: isAgent ? 16 : 4,
+                    borderTopRightRadius: isAgent ? 4 : 16,
+                    background: isAgent ? 'var(--primary)' : 'var(--surface)',
+                    color: isAgent ? '#fff' : 'var(--text)',
+                    border: isAgent ? 'none' : '1px solid var(--border)',
+                    fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word',
+                  }}>
+                    {m.body}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div ref={messagesEnd} />
+      </div>
+
+      {/* Reply composer */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 16px', paddingBottom: 'calc(12px + var(--safe-bottom))', background: 'var(--bg)', borderTop: '1px solid var(--border)', zIndex: 50 }}>
+        <div className="flex items-center gap-8">
+          <input
+            className="input flex-1"
+            value={reply}
+            onChange={e => setReply(e.target.value)}
+            placeholder="Type a reply..."
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendReply()}
+            style={{ margin: 0, borderRadius: 20, paddingLeft: 16, paddingRight: 16 }}
+          />
+          <button onClick={sendReply} disabled={!reply.trim() || sending}
+            style={{
+              width: 40, height: 40, borderRadius: '50%',
+              background: reply.trim() ? 'var(--primary)' : 'var(--surface-hover)',
+              border: 'none', cursor: reply.trim() ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              opacity: sending ? 0.5 : 1,
+            }}>
+            {sending ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Icon name="send" size={18} color={reply.trim() ? '#fff' : 'var(--text-muted)'} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────────
 export default function App() {
   const auth = useAuth();
@@ -613,7 +809,7 @@ export default function App() {
       case 'refund':
         return <RefundScreen order={screen.order} customer={screen.customer} onBack={() => navigate('customer', { customer: screen.customer })} onDone={goTabs} />;
       case 'ticket':
-        return null; // TODO: ticket detail
+        return <TicketDetailScreen ticketId={screen.ticketId} onBack={goTabs} />;
       default:
         return renderTab();
     }
