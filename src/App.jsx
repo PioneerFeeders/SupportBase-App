@@ -787,16 +787,221 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
   );
 }
 
+// ─── Incoming Call/Text Popup ─────────────────────────────
+function IncomingPopup({ event, onDismiss, onReship, onRefund }) {
+  if (!event) return null;
+
+  const isCall = event.type === 'incoming_call';
+  const customer = event.customer;
+  const orders = event.recentOrders || [];
+  const fmt = d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const statusColor = { fulfilled: 'var(--success)', partial: 'var(--warning)', unfulfilled: 'var(--danger)' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      {/* Backdrop */}
+      <div onClick={onDismiss} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
+
+      {/* Popup panel */}
+      <div style={{
+        position: 'relative', background: 'var(--bg)', borderRadius: '24px 24px 0 0',
+        maxHeight: '85dvh', overflowY: 'auto', animation: 'slideUp 0.3s ease-out',
+        paddingBottom: 'calc(20px + var(--safe-bottom))',
+      }}>
+        {/* Handle bar */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ padding: '8px 20px 16px', textAlign: 'center' }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', margin: '0 auto 12px',
+            background: isCall ? 'var(--success-bg)' : 'var(--info-bg)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28,
+            animation: isCall ? 'pulse 1.5s infinite' : 'none',
+          }}>
+            {isCall ? '📞' : '💬'}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: 1, color: isCall ? 'var(--success)' : 'var(--info)', textTransform: 'uppercase' }}>
+            {isCall ? 'Incoming Call' : 'New Message'}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>
+            {customer ? customer.name : 'Unknown Caller'}
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--text-sec)', marginTop: 2 }}>{event.phone}</div>
+          {event.messageBody && (
+            <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', fontSize: 14, color: 'var(--text)', textAlign: 'left' }}>
+              {event.messageBody}
+            </div>
+          )}
+        </div>
+
+        {/* Customer stats */}
+        {customer && (
+          <div className="flex justify-between" style={{ margin: '0 20px', padding: 16, background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div className="text-center flex-1">
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{customer.ordersCount}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Orders</div>
+            </div>
+            <div style={{ width: 1, background: 'var(--border)' }} />
+            <div className="text-center flex-1">
+              <div style={{ fontSize: 20, fontWeight: 700 }}>${customer.totalSpent}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lifetime</div>
+            </div>
+            {customer.email && <>
+              <div style={{ width: 1, background: 'var(--border)' }} />
+              <div className="text-center flex-1" style={{ overflow: 'hidden' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customer.email}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Email</div>
+              </div>
+            </>}
+          </div>
+        )}
+
+        {/* Recent orders */}
+        {orders.length > 0 && (
+          <div style={{ padding: '16px 20px 0' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: 0.5, marginBottom: 8 }}>RECENT ORDERS</div>
+            {orders.map((o, i) => (
+              <div key={i} style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', padding: 14, marginBottom: 8 }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{o.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmt(o.createdAt || o.date)}</span>
+                </div>
+                {(o.lineItems || o.items || []).map((li, j) => (
+                  <div key={j} style={{ fontSize: 13, color: 'var(--text-sec)', marginBottom: 1 }}>
+                    {li.quantity}× {li.title}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
+                  <span className="badge" style={{
+                    background: `${statusColor[o.fulfillmentStatus] || 'var(--text-muted)'}20`,
+                    color: statusColor[o.fulfillmentStatus] || 'var(--text-muted)',
+                    textTransform: 'capitalize', fontSize: 11, padding: '2px 8px', borderRadius: 6,
+                  }}>
+                    {o.fulfillmentStatus || 'Unfulfilled'}
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>${o.totalPrice || o.total}</span>
+                </div>
+                <div className="flex gap-8" style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost flex-1" style={{ padding: '8px 0', fontSize: 13 }} onClick={() => onReship(o, customer)}>
+                    <Icon name="refresh" size={14} color="var(--primary)" /> Reship
+                  </button>
+                  <button className="btn btn-danger-ghost flex-1" style={{ padding: '8px 0', fontSize: 13 }} onClick={() => onRefund(o, customer)}>
+                    <Icon name="card" size={14} color="var(--danger)" /> Refund
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* No customer match */}
+        {!customer && (
+          <div className="text-center" style={{ padding: '16px 20px' }}>
+            <div style={{ background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)', padding: 20 }}>
+              <Icon name="user" size={32} color="var(--text-muted)" />
+              <div style={{ fontSize: 14, color: 'var(--text-sec)', marginTop: 8 }}>No matching customer in Shopify</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{event.phone}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Dismiss */}
+        <div style={{ padding: '12px 20px 0' }}>
+          <button className="btn" onClick={onDismiss} style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            color: 'var(--text-sec)', fontWeight: 600,
+          }}>
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SSE Hook ────────────────────────────────────────────
+function useSSE(token) {
+  const [incomingEvent, setIncomingEvent] = useState(null);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const API_BASE = 'https://support-base-production.up.railway.app/api/v1';
+    const url = `${API_BASE}/events/stream?token=${encodeURIComponent(token)}`;
+
+    let es = null;
+    let retryTimeout = null;
+    let retryDelay = 1000;
+
+    function connect() {
+      console.log('SSE: connecting...');
+      es = new EventSource(url);
+
+      es.addEventListener('connected', (e) => {
+        console.log('SSE: connected', JSON.parse(e.data));
+        retryDelay = 1000; // reset on successful connection
+      });
+
+      es.addEventListener('incoming', (e) => {
+        console.log('SSE: incoming event', e.data);
+        try {
+          const data = JSON.parse(e.data);
+          setIncomingEvent(data);
+
+          // Play notification sound / vibrate
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        } catch (err) {
+          console.error('SSE: parse error', err);
+        }
+      });
+
+      es.onerror = () => {
+        console.log('SSE: error, reconnecting in', retryDelay, 'ms');
+        es.close();
+        retryTimeout = setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 2, 30000);
+          connect();
+        }, retryDelay);
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (es) es.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [token]);
+
+  const dismiss = () => setIncomingEvent(null);
+
+  return { incomingEvent, dismiss };
+}
+
 // ─── Main App ────────────────────────────────────────────
 export default function App() {
   const auth = useAuth();
   const [tab, setTab] = useState('inbox');
   const [screen, setScreen] = useState({ name: 'tabs' });
+  const { incomingEvent, dismiss } = useSSE(auth.token);
 
   if (!auth.isAuth) return <LoginScreen onLogin={auth.doLogin} />;
 
   const navigate = (name, props = {}) => setScreen({ name, ...props });
   const goTabs = () => setScreen({ name: 'tabs' });
+
+  const handlePopupReship = (order, customer) => {
+    dismiss();
+    navigate('reship', { order, customer: { ...customer, name: customer.name } });
+  };
+
+  const handlePopupRefund = (order, customer) => {
+    dismiss();
+    navigate('refund', { order, customer: { ...customer, name: customer.name } });
+  };
 
   const renderScreen = () => {
     switch (screen.name) {
@@ -845,6 +1050,13 @@ export default function App() {
           ))}
         </div>
       )}
+      {/* Incoming call/text popup overlay */}
+      <IncomingPopup
+        event={incomingEvent}
+        onDismiss={dismiss}
+        onReship={handlePopupReship}
+        onRefund={handlePopupRefund}
+      />
     </>
   );
 }
