@@ -157,3 +157,5 @@ a { color: var(--info); text-decoration: none; }
 .fade-in { animation: fadeIn 0.2s ease; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner { width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 0.85; } }
