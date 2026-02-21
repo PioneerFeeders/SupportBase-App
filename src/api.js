@@ -33,6 +33,7 @@ export const getTickets = (params) => api.get('/tickets', { params });
 export const getTicket = (id) => api.get(`/tickets/${id}`);
 export const addTicketMessage = (id, body) => api.post(`/tickets/${id}/messages`, { body });
 export const updateTicket = (id, data) => api.put(`/tickets/${id}`, data);
+export const getTicketHistory = (phone) => api.get(`/tickets/history/${encodeURIComponent(phone)}`);
 export const getAnalyticsOverview = () => api.get('/analytics/overview');
 export const getDoaByChannel = (w) => api.get(`/analytics/doa-by-channel?weeks=${w || 12}`);
 export const getReshipCosts = (w) => api.get(`/analytics/reship-costs?weeks=${w || 12}`);

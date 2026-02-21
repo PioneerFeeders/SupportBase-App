@@ -218,7 +218,13 @@ function InboxScreen({ onOpenTicket, onNavigate }) {
 
   const load = useCallback(async () => {
     try {
-      const params = filter !== 'all' ? { channel: filter } : {};
+      const params = {};
+      if (filter === 'resolved') {
+        params.status = 'resolved';
+        params.showAll = true;
+      } else if (filter !== 'all') {
+        params.channel = filter;
+      }
       const res = await api.getTickets(params);
       setTickets(res.data.tickets);
     } catch (e) { console.error(e); }
@@ -248,10 +254,10 @@ function InboxScreen({ onOpenTicket, onNavigate }) {
           <Icon name="plus" size={20} color="var(--primary)" />
         </button>
       </div>
-      <div className="flex gap-8 px-20 mb-16" style={{ overflowX: 'auto' }}>
-        {['all', 'amazon', 'shopify', 'phone', 'text'].map(f => (
+      <div className="flex gap-8 px-20 mb-16" style={{ overflowX: 'auto', flexWrap: 'nowrap' }}>
+        {['all', 'phone', 'text', 'shopify', 'amazon', 'resolved'].map(f => (
           <button key={f} className={`chip ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === 'all' ? 'All' : f === 'resolved' ? '✅ Resolved' : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
       </div>
@@ -728,12 +734,23 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
   const [sending, setSending] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showResolve, setShowResolve] = useState(false);
+  const [pastTickets, setPastTickets] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const messagesEnd = React.useRef(null);
 
   const load = useCallback(async () => {
     try {
       const res = await api.getTicket(ticketId);
-      setTicket(res.data.ticket || res.data);
+      const t = res.data.ticket || res.data;
+      setTicket(t);
+      // Load past tickets for this phone number
+      if (t.customerPhone) {
+        try {
+          const histRes = await api.getTicketHistory(t.customerPhone);
+          // Filter out current ticket
+          setPastTickets((histRes.data.tickets || []).filter(pt => pt.id !== ticketId));
+        } catch (e) { console.error('History load error:', e); }
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [ticketId]);
@@ -834,6 +851,76 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
             </button>
           )}
         </div>
+
+        {/* Past Tickets */}
+        {pastTickets.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <button onClick={() => setShowHistory(!showHistory)}
+              className="flex items-center justify-between"
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                cursor: 'pointer', color: 'var(--text)',
+              }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                📋 Past Tickets ({pastTickets.length})
+                {pastTickets.some(pt => pt.actions?.length > 0) && (
+                  <span style={{ color: 'var(--warning)', marginLeft: 6 }}>
+                    ⚠️ {pastTickets.reduce((n, pt) => n + (pt.actions?.length || 0), 0)} action(s)
+                  </span>
+                )}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', transform: showHistory ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+            </button>
+            {showHistory && (
+              <div style={{ marginTop: 4 }}>
+                {pastTickets.map(pt => (
+                  <div key={pt.id} style={{ padding: '10px 12px', marginTop: 4, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center justify-between">
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{pt.subject}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {new Date(pt.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-6" style={{ marginTop: 4 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                        textTransform: 'capitalize',
+                        background: pt.status === 'resolved' ? 'var(--success-bg)' : pt.status === 'closed' ? 'var(--surface-hover)' : 'var(--warning-bg)',
+                        color: pt.status === 'resolved' ? 'var(--success)' : pt.status === 'closed' ? 'var(--text-muted)' : 'var(--warning)',
+                      }}>
+                        {pt.status?.replace('_', ' ')}
+                      </span>
+                      {pt.resolutionType && (
+                        <span style={{ fontSize: 11, color: 'var(--text-sec)' }}>
+                          {pt.resolutionType.replace('_', ' ')}{pt.resolutionReason ? ` · ${pt.resolutionReason.replace('_', ' ')}` : ''}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pt.messageCount} msg</span>
+                    </div>
+                    {pt.actions?.length > 0 && (
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                        {pt.actions.map(a => (
+                          <div key={a.id} className="flex items-center gap-6" style={{ marginTop: 2 }}>
+                            <span style={{ fontSize: 12 }}>{a.type === 'reship' ? '📦' : '💳'}</span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: a.type === 'reship' ? 'var(--warning)' : 'var(--danger)' }}>
+                              {a.type.toUpperCase()}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--text-sec)' }}>${Number(a.amount).toFixed(2)}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{a.reason?.replace('_', ' ')}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Quick Resolve + Status */}
         {ticket.status !== 'resolved' && ticket.status !== 'closed' ? (
