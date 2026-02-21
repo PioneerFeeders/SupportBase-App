@@ -24,6 +24,7 @@ api.interceptors.response.use(
 
 export const login = (email, password) => api.post('/auth/login', { email, password });
 export const searchCustomers = (q) => api.get(`/customers/search?q=${encodeURIComponent(q)}`);
+export const getCustomer = (id) => api.get(`/customers/${id}`);
 export const getCustomerOrders = (id, limit = 25) => api.get(`/customers/${id}/orders?limit=${limit}`);
 export const getOrder = (id) => api.get(`/orders/${id}`);
 export const createReship = (id, data) => api.post(`/orders/${id}/reship`, data);
