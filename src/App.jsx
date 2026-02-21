@@ -96,11 +96,125 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ─── Quick Resolve Sheet ─────────────────────────────────
+const RESOLVE_TYPES = [
+  { id: 'no_action', label: 'No Action Needed', icon: '✅', needsReason: false },
+  { id: 'info_only', label: 'Info / Answered Question', icon: '💡', needsReason: false },
+  { id: 'reship', label: 'Reship Created', icon: '📦', needsReason: true },
+  { id: 'refund', label: 'Refund Issued', icon: '💳', needsReason: true },
+];
+
+const RESOLVE_REASONS = [
+  { id: 'doa', label: 'DOA' },
+  { id: 'damaged', label: 'Damaged in Transit' },
+  { id: 'wrong_order', label: 'Wrong Order' },
+  { id: 'undercount', label: 'Undercount' },
+  { id: 'missing', label: 'Missing Item' },
+  { id: 'weather', label: 'Weather / Delay' },
+  { id: 'customer_request', label: 'Customer Request' },
+  { id: 'other', label: 'Other' },
+];
+
+function QuickResolveSheet({ ticketId, onDone, onCancel }) {
+  const [step, setStep] = useState('type'); // 'type' or 'reason'
+  const [selectedType, setSelectedType] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const resolve = async (type, reason) => {
+    setLoading(true);
+    try {
+      await api.updateTicket(ticketId, {
+        status: 'resolved',
+        resolutionType: type,
+        resolutionReason: reason || null,
+      });
+      onDone();
+    } catch (e) {
+      alert('Failed to resolve');
+      console.error(e);
+    } finally { setLoading(false); }
+  };
+
+  const handleTypeSelect = (type) => {
+    if (type.needsReason) {
+      setSelectedType(type);
+      setStep('reason');
+    } else {
+      resolve(type.id, null);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div onClick={onCancel} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }} />
+      <div style={{ position: 'relative', background: 'var(--bg)', borderRadius: '20px 20px 0 0', paddingBottom: 'calc(16px + var(--safe-bottom))', animation: 'slideUp 0.25s ease-out' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+        </div>
+
+        {step === 'type' ? (
+          <div style={{ padding: '8px 20px 12px' }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Quick Resolve</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>How was this resolved?</div>
+            {RESOLVE_TYPES.map(t => (
+              <button key={t.id} onClick={() => handleTypeSelect(t)} disabled={loading}
+                className="flex items-center gap-12"
+                style={{
+                  width: '100%', padding: '14px 16px', marginBottom: 6, borderRadius: 12,
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  cursor: 'pointer', textAlign: 'left', opacity: loading ? 0.5 : 1,
+                }}>
+                <span style={{ fontSize: 20, width: 32, textAlign: 'center' }}>{t.icon}</span>
+                <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)' }}>{t.label}</span>
+                {t.needsReason && <Icon name="chevron" size={16} color="var(--text-muted)" />}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '8px 20px 12px' }}>
+            <div className="flex items-center gap-8" style={{ marginBottom: 16 }}>
+              <button onClick={() => setStep('type')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-hover)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="back" size={16} color="var(--text)" />
+              </button>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700 }}>{selectedType?.label}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select reason</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              {RESOLVE_REASONS.map(r => (
+                <button key={r.id} onClick={() => resolve(selectedType.id, r.id)} disabled={loading}
+                  style={{
+                    padding: '12px 10px', borderRadius: 10,
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'var(--text)',
+                    textAlign: 'center', opacity: loading ? 0.5 : 1,
+                  }}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ padding: '4px 20px 0' }}>
+          <button onClick={onCancel} style={{
+            width: '100%', padding: 12, borderRadius: 10,
+            background: 'transparent', border: '1px solid var(--border)',
+            cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--text-muted)',
+          }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Inbox ───────────────────────────────────────────────
 function InboxScreen({ onOpenTicket, onNavigate }) {
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [resolveTicketId, setResolveTicketId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -151,8 +265,8 @@ function InboxScreen({ onOpenTicket, onNavigate }) {
             <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>No tickets to show</div>
           </div>
         ) : tickets.map(t => (
-          <div key={t.id} className="card fade-in" onClick={() => onOpenTicket(t.id)} style={{ cursor: 'pointer' }}>
-            <div className="flex items-center gap-12">
+          <div key={t.id} className="card fade-in" style={{ cursor: 'pointer' }}>
+            <div className="flex items-center gap-12" onClick={() => onOpenTicket(t.id)}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: `${channelColor[t.channel]}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
                 {channelIcon[t.channel]}
               </div>
@@ -164,13 +278,28 @@ function InboxScreen({ onOpenTicket, onNavigate }) {
                 <div style={{ fontSize: 14, color: 'var(--text-sec)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.subject}</div>
               </div>
             </div>
-            <div className="flex items-center gap-8" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: statusColor[t.status] }} />
-              <span style={{ fontSize: 12, fontWeight: 500, color: statusColor[t.status], textTransform: 'capitalize' }}>{t.status?.replace('_', ' ')}</span>
+            <div className="flex items-center justify-between" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-8">
+                <div style={{ width: 6, height: 6, borderRadius: 3, background: statusColor[t.status] }} />
+                <span style={{ fontSize: 12, fontWeight: 500, color: statusColor[t.status], textTransform: 'capitalize' }}>{t.status?.replace('_', ' ')}</span>
+              </div>
+              {t.status !== 'resolved' && t.status !== 'closed' && (
+                <button onClick={(e) => { e.stopPropagation(); setResolveTicketId(t.id); }}
+                  style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--success-bg)', border: '1px solid var(--success)30', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--success)' }}>
+                  Resolve
+                </button>
+              )}
             </div>
           </div>
         ))}
       </div>
+      {resolveTicketId && (
+        <QuickResolveSheet
+          ticketId={resolveTicketId}
+          onCancel={() => setResolveTicketId(null)}
+          onDone={() => { setResolveTicketId(null); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -598,6 +727,7 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [showResolve, setShowResolve] = useState(false);
   const messagesEnd = React.useRef(null);
 
   const load = useCallback(async () => {
@@ -698,17 +828,37 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
               {[ticket.customerEmail, ticket.customerPhone].filter(Boolean).join(' · ') || 'No contact info'}
             </div>
           </div>
+          {(ticket.shopifyCustomerId || ticket.customerPhone) && (
+            <button onClick={() => onNavigateCustomer && onNavigateCustomer(ticket)} style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--primary-bg)', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--primary)', flexShrink: 0 }}>
+              View Orders
+            </button>
+          )}
         </div>
 
-        {/* Status controls */}
-        <div className="flex gap-8" style={{ marginTop: 4 }}>
+        {/* Quick Resolve + Status */}
+        {ticket.status !== 'resolved' && ticket.status !== 'closed' ? (
+          <button onClick={() => setShowResolve(true)}
+            style={{
+              width: '100%', marginTop: 8, padding: '10px 16px', borderRadius: 10,
+              background: 'var(--success)', border: 'none', cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+            <Icon name="check" size={16} color="#fff" /> Quick Resolve
+          </button>
+        ) : (
+          <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'var(--success-bg)', border: '1px solid var(--success)30', fontSize: 13, color: 'var(--success)', fontWeight: 600, textAlign: 'center' }}>
+            Resolved{ticket.resolutionType ? ` — ${ticket.resolutionType.replace('_', ' ')}` : ''}{ticket.resolutionReason ? ` (${ticket.resolutionReason.replace('_', ' ')})` : ''}
+          </div>
+        )}
+        <div className="flex gap-8" style={{ marginTop: 8 }}>
           {statusOptions.map(s => (
             <button key={s} onClick={() => updateStatus(s)} disabled={updating || ticket.status === s}
               style={{
-                flex: 1, padding: '8px 4px', borderRadius: 8, border: `1px solid ${ticket.status === s ? statusColor[s] : 'var(--border)'}`,
+                flex: 1, padding: '6px 4px', borderRadius: 8, border: `1px solid ${ticket.status === s ? statusColor[s] : 'var(--border)'}`,
                 background: ticket.status === s ? `${statusColor[s]}15` : 'transparent',
                 color: ticket.status === s ? statusColor[s] : 'var(--text-muted)',
-                fontSize: 11, fontWeight: 600, cursor: ticket.status === s ? 'default' : 'pointer', textTransform: 'capitalize',
+                fontSize: 10, fontWeight: 600, cursor: ticket.status === s ? 'default' : 'pointer', textTransform: 'capitalize',
                 opacity: updating ? 0.5 : 1,
               }}>
               {s.replace('_', ' ')}
@@ -783,6 +933,14 @@ function TicketDetailScreen({ ticketId, onBack, onNavigateCustomer }) {
           </button>
         </div>
       </div>
+      {/* Quick Resolve Sheet */}
+      {showResolve && (
+        <QuickResolveSheet
+          ticketId={ticketId}
+          onCancel={() => setShowResolve(false)}
+          onDone={() => { setShowResolve(false); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1021,15 +1179,46 @@ export default function App() {
   const renderScreen = () => {
     switch (screen.name) {
       case 'customer':
-        return <CustomerScreen customer={screen.customer} onBack={goTabs}
-          onReship={(o) => navigate('reship', { order: o, customer: screen.customer })}
-          onRefund={(o) => navigate('refund', { order: o, customer: screen.customer })} />;
+        return <CustomerScreen customer={screen.customer} onBack={() => {
+            if (screen.fromTicketId) navigate('ticket', { ticketId: screen.fromTicketId });
+            else goTabs();
+          }}
+          onReship={(o) => navigate('reship', { order: o, customer: screen.customer, fromTicketId: screen.fromTicketId })}
+          onRefund={(o) => navigate('refund', { order: o, customer: screen.customer, fromTicketId: screen.fromTicketId })} />;
       case 'reship':
-        return <ReshipScreen order={screen.order} customer={screen.customer} onBack={() => navigate('customer', { customer: screen.customer })} onDone={goTabs} />;
+        return <ReshipScreen order={screen.order} customer={screen.customer}
+          onBack={() => navigate('customer', { customer: screen.customer, fromTicketId: screen.fromTicketId })}
+          onDone={() => { if (screen.fromTicketId) navigate('ticket', { ticketId: screen.fromTicketId }); else goTabs(); }} />;
       case 'refund':
-        return <RefundScreen order={screen.order} customer={screen.customer} onBack={() => navigate('customer', { customer: screen.customer })} onDone={goTabs} />;
+        return <RefundScreen order={screen.order} customer={screen.customer}
+          onBack={() => navigate('customer', { customer: screen.customer, fromTicketId: screen.fromTicketId })}
+          onDone={() => { if (screen.fromTicketId) navigate('ticket', { ticketId: screen.fromTicketId }); else goTabs(); }} />;
       case 'ticket':
-        return <TicketDetailScreen ticketId={screen.ticketId} onBack={goTabs} />;
+        return <TicketDetailScreen ticketId={screen.ticketId} onBack={goTabs}
+          onNavigateCustomer={async (ticket) => {
+            // Load customer from Shopify by ID or search by phone
+            try {
+              let customer = null;
+              if (ticket.shopifyCustomerId) {
+                const res = await api.getCustomer(ticket.shopifyCustomerId);
+                customer = res.data.customer;
+              } else if (ticket.customerPhone) {
+                const res = await api.searchCustomers(ticket.customerPhone);
+                if (res.data.customers.length > 0) customer = res.data.customers[0];
+              } else if (ticket.customerEmail) {
+                const res = await api.searchCustomers(ticket.customerEmail);
+                if (res.data.customers.length > 0) customer = res.data.customers[0];
+              }
+              if (customer) {
+                navigate('customer', { customer, fromTicketId: ticket.id });
+              } else {
+                alert('Customer not found in Shopify');
+              }
+            } catch (e) {
+              console.error(e);
+              alert('Could not load customer');
+            }
+          }} />;
       default:
         return renderTab();
     }
